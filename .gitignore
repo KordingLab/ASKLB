@@ -12,3 +12,8 @@ build/
 *.egg-info/
 
 *~
+
+MetaData/
+
+Datasets/
+.vscode/

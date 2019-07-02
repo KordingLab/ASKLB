@@ -2,20 +2,35 @@
   <body>
     <header>
       <div class="container">
-        <h1 class="logo">Analyzing Liquid Biopsy Datas with Autosklearn</h1>
+        <h1 class="logo">Auto-Sklearn for Liquid Biopsy Data</h1>
+        {% if g.user %}
+        <p>Logged in as <b>{{ g.user['username'] }}</b></p>
+        {% endif %}
         <strong><nav>
-          <ul class="menu">
-            <li><a href="{{ url_for('home') }}">About</a></li>
-            <li><a href="{{ url_for('instructions') }}">Instructions</a></li>
-	    <li><a href="{{ url_for('form') }}">Parameters</a></li>
-	    <li><a href="{{ url_for('upload_file') }}">Upload</a></li>
-          </ul>
+            <ul>
+                <li><a href="{{ url_for('index') }}">About</a></li>
+                <li><a href="{{ url_for('instructions') }}">Instructions</a></li>    
+              {% if g.user %}
+                  <li><a href="{{ url_for('logout') }}">Log Out</a>
+                  <li><a href="{{ url_for('upload_file') }}">Upload</a></li>
+                  <li><a href="{{ url_for('form') }}">Parameters</a></li>
+                {% else %}
+                  <li><a href="{{ url_for('register') }}">Register</a>
+                  <li><a href="{{ url_for('login') }}">Log In</a>
+                {% endif %}
+              </ul>
         </nav></strong>
       </div>
     </header>
-    <div class="container">
-      {% block content %}
-      {% endblock %}
-    </div>
+
+    <section class="content">
+      <header>
+        {% block header %}{% endblock %}
+      </header>
+      {% for message in get_flashed_messages() %}
+        <div class="flash">{{ message }}</div>
+      {% endfor %}
+      {% block content %}{% endblock %}
+    </section>
   </body>
 </html>
