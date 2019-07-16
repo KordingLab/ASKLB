@@ -14,7 +14,7 @@ from flask import (Flask, flash, request, redirect, url_for,
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
 
-
+# TODO integrate flask-upload
 UPLOAD_FOLDER = '/Users/hanfeishen/Desktop/Website/'
 ALLOWED_EXTENSIONS = set(['csv'])
 
@@ -82,14 +82,13 @@ Manages user creation and registration.
 TODO:
     - enforce usernames to be emails
     - unit tests
-
+    - check "email already registered" bug: sometimes triggers without actually registering the user
 """
 
 @app.route('/register', methods=('GET', 'POST'))
 def register():
-    """Registers the new user
+    """Registers the new user"""
 
-    """
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -112,7 +111,6 @@ def register():
 
         flash(error)
 
-    
     return render_template('register.html')
 
 
@@ -151,12 +149,13 @@ def load_logged_in_user():
     else:
         g.user = get_db(user_id)
 
+
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('index'))
 
-    
+
 """
 DATABASE FUNCTIONS
 
@@ -167,7 +166,7 @@ Potential scheme:
     - have additional fields in the table for user/pass, uploaded data, results
     - use sqlitedict.get_tablenames() to iterate over all datasets when training
 TODO:
-    - unit test
+    - unit tests
 """
 
 from sqlitedict import SqliteDict
