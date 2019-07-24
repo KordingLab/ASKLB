@@ -9,7 +9,11 @@ Created on Mon Apr 22 14:56:58 2019
 import os
 
 from flask import (Flask, flash, request, redirect, url_for, 
-                   send_from_directory, render_template, session)
+                   send_from_directory, render_template, session, g)
+
+import pymongo
+import bcrypt
+import urllib.parse
 
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -22,6 +26,11 @@ app = Flask(__name__)
 app.secret_key = 'dev' # TODO change to something random for production
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024 #limit the size to 50Mb
+
+# Database setup
+mongo_uri = "mongodb://admin_jesse:long_password_for_admin_jesse_2019@localhost:27017/" #TODO hook up quadcorn to mongdb
+client = pymongo.MongoClient(mongo_uri)
+db = client.asklb_test
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -93,25 +102,30 @@ def register():
         username = request.form['username']
         password = request.form['password']
         error = None
-
         if not username:
             error = 'Email is required.'
         elif not password:
             error = 'Password is required.'
         else:
-            db = get_db(username)
-            if db.get('password') is not None:
-                error = "Email {} is already registered.".format(username)
-
-        if error is None:
-            db['password'] = generate_password_hash(password)
-            db['username'] = username
-            db.commit()
-            return redirect(url_for('login'))
-
+            users = db.users
+            existing_user = users.find_one({'name' : request.form['username']})
+    
+            if existing_user is None:
+                hashpass = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+                users.insert({'name' : username, 'password' : hashpass})
+                session['user_id'] = username
+                return redirect(url_for('index'))
+            
+            else:
+                error = 'That username already exists!'
+            
         flash(error)
-
-    return render_template('register.html')
+            
+    else:
+        if 'user_id' in session:
+            return 'You are already logged in as ' + session['user_id']
+        else:
+            return render_template('register.html')
 
 
 @app.route('/login', methods=('GET', 'POST'))
@@ -121,84 +135,42 @@ def login():
         username = request.form['username']
         password = request.form['password']
         error = None
-
-        tablenames = SqliteDict.get_tablenames(DATABASE_PATH)
-        if username not in tablenames:
-            error = 'Incorrect email.'
-        else:
-            db = get_db(username)
-            if not check_password_hash(db['password'], password):
-                error = 'Incorrect password.'
+        if request.method == 'POST':
+            users = db.users
+            login_user = users.find_one({'name' : username})
+    
+            if login_user:
+                if bcrypt.hashpw(password.encode('utf-8'), 
+                                 login_user['password']) == login_user['password']:
+                    session.clear()
+                    session['user_id'] = request.form['username']
+                    return redirect(url_for('index'))
+                else:
+                    error = 'Incorrect password'
+            else:
+                error = 'Incorrect email'
+        
+            flash(error)
             
-        if error is None:
-            session.clear()
-            session['user_id'] = db['username']
-            return redirect(url_for('index'))
-        
-        flash(error)
-
-    return render_template('login.html')
-        
-
-@app.before_request
-def load_logged_in_user():
-    user_id = session.get('user_id')
-
-    if user_id is None:
-        g.user = None
     else:
-        g.user = get_db(user_id)
-
+        if 'user_id' in session:
+            return 'You are already logged in as ' + session['user_id']
+        else:
+            return render_template('login.html')  
+        
 
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('index'))
 
+@app.before_request
+def load_user():
+    if 'user_id' in session:
+        user = {'username': db.users.find_one({'name' : session["user_id"]})['name']}
+    else:
+        user = None
 
-"""
-DATABASE FUNCTIONS
+    g.user = user
 
-Manages Flask interaction with the database, currently sqlitedict.
 
-Potential scheme:
-    - each table corresponds to a user
-    - have additional fields in the table for user/pass, uploaded data, results
-    - use sqlitedict.get_tablenames() to iterate over all datasets when training
-TODO:
-    - unit tests
-"""
-
-from sqlitedict import SqliteDict
-from flask import g
-
-# TODO reorg directory structure
-DATABASE_PATH = 'asklb.db'
-
-def get_db(tablename):
-    """Initalizes a database connection with the given table name
-
-    Args:
-        tablename (str): the table to retrieve from the sqlitedict
-
-    Returns:
-        SqliteDict: instance of SqliteDict, with autocommits set to True.
-    """
-    db = getattr(g, '_database', None)
-    if db is None:
-        db = g._database = SqliteDict(DATABASE_PATH, 
-                                      tablename=tablename,
-                                      autocommit=False)
-    return db
-
-@app.teardown_appcontext
-def close_connection(exception):
-    """Closes the database connection on teardown request.
-
-    Args:
-        exception (?): Exception obj
-    """
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
-    
