@@ -1,9 +1,6 @@
-##!/usr/bin/env python3
-## -*- coding: utf-8 -*-
 """
-Created on Mon Apr 22 14:56:58 2019
 
-@author: hanfeishen and tonyliu
+@author: hanfeishen, tonyliu, jessecui
 """
 
 import os
