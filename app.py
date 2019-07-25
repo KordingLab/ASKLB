@@ -28,7 +28,7 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024 #limit the size to 50Mb
 
 # Database setup
-mongo_uri = "mongodb://admin_jesse:long_password_for_admin_jesse_2019@localhost:27017/" #TODO hook up quadcorn to mongdb
+mongo_uri = "mongodb://admin:very_secret_password@localhost:27018/" 
 client = pymongo.MongoClient(mongo_uri)
 db = client.asklb_test
 
