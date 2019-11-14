@@ -184,7 +184,6 @@ class ASKLBWidget(Box):
         #    print("FILE UPLOAD BEGUN.")
 
 
-
     def on_fit_button_clicked(self, button):
         """Widget behavior after fit button click event occurs.
         
