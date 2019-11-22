@@ -17,3 +17,6 @@ MetaData/
 
 Datasets/
 .vscode/
+
+notebooks/.ipynb_checkpoints/*
+.ipynb_checkpoints/*
