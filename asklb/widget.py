@@ -75,6 +75,25 @@ class ASKLBWidget(Box):
         self.train_idxs = []
         self.test_idxs = []
 
+        # Widgets for user authentication
+        self.user_text_widget = widgets.Text(
+            placeholder='Username',
+            description='Username:'
+        )
+
+        self.password_text_widget = widgets.Text(
+            placeholder='Password',
+            description='Password:'
+        )
+
+        self.sign_in_widget = widgets.Button(
+            description="Sign In", 
+            layout = widgets.Layout(width='auto'),
+            button_style='primary',
+            disabled=False) # init with fit button disabled
+        self.sign_in_widget.on_click(self.on_sign_in_widget_click)
+
+        # Widgets for runtime
         self.runtime_widget = widgets.IntSlider(
             value=1,
             min=1,
@@ -127,15 +146,23 @@ class ASKLBWidget(Box):
             flex_flow='column',
             align_items='stretch',
             border='solid',
-            width='65%')
+            width='75%')
 
-        widget_items = [runtime_slider, 
-                        budget_slider, 
-                        self.upload_widget, 
-                        self.fit_button_widget, 
-                        self.progress_widget, 
-                        self.event_output_widget, 
-                        models_accordian]
+        auth_widget_items = [self.user_text_widget, self.password_text_widget, self.sign_in_widget]
+        self.auth_widget = widgets.HBox(auth_widget_items)
+
+        automl_widget_items = [runtime_slider, 
+                               budget_slider, 
+                               self.upload_widget, 
+                               self.fit_button_widget, 
+                               self.progress_widget, 
+                               self.event_output_widget, 
+                               models_accordian]
+
+        self.automl_widget = widgets.VBox(automl_widget_items)
+        self.automl_widget.layout.visibility = 'hidden'
+
+        widget_items = [self.auth_widget, self.automl_widget]
 
         super(Box, self).__init__(children=widget_items, layout=self.layout, **kwargs)
 
@@ -182,6 +209,20 @@ class ASKLBWidget(Box):
         pass
         #with self.event_output_widget:
         #    print("FILE UPLOAD BEGUN.")
+
+    def on_sign_in_widget_click(self, button):
+        """Defines widget behavior after the user clicks on the sign-in button
+
+        Side effects:
+            - enables the AutoML widget
+            - TODO switches the sign-in widget with a signed-in widget
+
+        Args:
+            button (widgets.Button): the sign-in object clicked.
+        """
+
+        # TODO handle the logic with the sign-in widget
+        self.automl_widget.layout.visibility = 'visible'
 
 
     def on_fit_button_clicked(self, button):
