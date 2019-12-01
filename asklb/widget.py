@@ -9,9 +9,11 @@ import time
 import threading
 import warnings
 
-# widget modules
+# widget and rendering modules
 import ipywidgets as widgets
 from ipywidgets import Box
+from google.colab import files as colab_files
+from IPython.display import clear_output
 
 # ML modules
 import autosklearn.classification
@@ -54,7 +56,7 @@ class HiddenPrints:
         sys.stdout = self._original_stdout
 
 
-"""Constants"""
+"""Constants""" # TODO move this to a config
 MAX_TIME = 60
 MAX_BUDGET = 10
 TRAIN_SIZE = 0.75
@@ -65,7 +67,9 @@ class ASKLBWidget(Box):
     """
 
     def __init__(self, **kwargs):
-        """Initializes ASKLBWidget by creating all widget components."""
+        """Initializes ASKLBWidget by creating all widget components.
+        
+        """
 
         self.queries = 0
         # We make the assumption that the first column are the labels.
@@ -85,13 +89,23 @@ class ASKLBWidget(Box):
             min=1,
             max=MAX_BUDGET)
 
-        self.upload_widget = widgets.FileUpload(
+        self.upload_button_widget = widgets.Button(
+            description="Upload Data File", 
+            layout = widgets.Layout( width='auto'),
+            button_style='primary',
+            disabled=False
+        )
+        self.upload_button_widget.on_click(self.on_upload_button_clicked)
+
+        # Can't use because of bug in colab rendering of FileUpload
+        """ self.upload_widget = widgets.FileUpload(
             accept='.csv',  # Accepted file extension
             multiple=False  # Only accept a single file
         )
         self.upload_widget.observe(self.on_data_upload_begin, names="_counter")
         self.upload_widget.observe(self.on_data_upload_completion, names="value")
-
+        """
+        
         self.progress_widget = widgets.IntProgress(
             value=0, 
             min=0, 
@@ -108,8 +122,7 @@ class ASKLBWidget(Box):
         self.model_output_widget = widgets.Output()
         self.metrics_output_widget = widgets.Output()
 
-        self.assemble_widget(**kwargs)
-
+        self.assemble_widget()
 
     def assemble_widget(self, **kwargs):
         """Assembles the individual widget components in a single Box instance."""
@@ -131,7 +144,7 @@ class ASKLBWidget(Box):
 
         widget_items = [runtime_slider, 
                         budget_slider, 
-                        self.upload_widget, 
+                        self.upload_button_widget, 
                         self.fit_button_widget, 
                         self.progress_widget, 
                         self.event_output_widget, 
@@ -143,7 +156,8 @@ class ASKLBWidget(Box):
     def on_data_upload_completion(self, change_dict):
         """Defines widget behavior after a file has been uploaded.
 
-        Processes the uploaded data.
+        Processes the uploaded data. 
+        TODO cannot be used due to bug in Colab rendering of FileUpload widget
 
         Side effects:
             - disables upload_widget
@@ -176,13 +190,48 @@ class ASKLBWidget(Box):
             self.train_idxs = indices[:split_idx]
             self.test_idxs = indices[split_idx:]            
 
-    def on_data_upload_begin(self, counter):
-        """Defines widget behavior once a file has begun uploading."""
-        #TODO figure out FileUpload observation *before* upload completion
-        pass
-        #with self.event_output_widget:
-        #    print("FILE UPLOAD BEGUN.")
 
+    def on_upload_button_clicked(self, button):
+        """Defines widget behavior after the upload button is clicked.
+
+        Due to a bug in how FileUpload widgets are rendered in colab, we must 
+        wrap the google.colab.files.upload() functionality.
+
+        Processes the uploaded data.
+
+        Side effects:
+            - disables upload_widget
+            - enables fit_button_widget
+            - appends new data to data list
+
+        Args:
+            change_dict (dict): the value dict passed from the FileUpload widget.
+        """
+        
+        # clear_output(wait=True)
+
+        file_dict = colab_files.upload() # blocks until file is uploaded
+
+
+        with self.event_output_widget:
+            print("DATA UPLOAD COMPLETE.")
+
+        filename = list(file_dict.keys())[0]
+        b_stream = BytesIO(file_dict[filename])
+        data_array = np.loadtxt(b_stream, delimiter=',')
+        self.data.append(data_array)
+        
+        # this is the first dataset loaded
+        if len(self.data) == 1:
+            n_samples = self.data[0].shape[0]
+            indices = np.arange(n_samples)
+            np.random.shuffle(indices)
+            split_idx = int(n_samples * TRAIN_SIZE)
+            self.train_idxs = indices[:split_idx]
+            self.test_idxs = indices[split_idx:]            
+
+        self.upload_widget.disabled = True
+        self.fit_button_widget.disabled = False
 
     def on_fit_button_clicked(self, button):
         """Widget behavior after fit button click event occurs.
