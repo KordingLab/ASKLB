@@ -66,11 +66,11 @@ class ASKLBWidget(Box):
     ASKLB Widget, extends ipywidget's Box.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, debug=False, **kwargs):
         """Initializes ASKLBWidget by creating all widget components.
         
         """
-
+        self.debug = debug # whether or not to make debug statements
         self.queries = 0
         # We make the assumption that the first column are the labels.
         # TODO can add "checksum" for the y's for the data to be in the same order
@@ -200,18 +200,18 @@ class ASKLBWidget(Box):
         Processes the uploaded data.
 
         Side effects:
-            - disables upload_widget
+            - disables upload_button_widget
             - enables fit_button_widget
             - appends new data to data list
 
         Args:
-            change_dict (dict): the value dict passed from the FileUpload widget.
+            button (widgets.Button): the button object clicked.
         """
-        
+        self.upload_button_widget.disabled = True
+                
         # clear_output(wait=True)
 
         file_dict = colab_files.upload() # blocks until file is uploaded
-
 
         with self.event_output_widget:
             print("DATA UPLOAD COMPLETE.")
@@ -219,6 +219,7 @@ class ASKLBWidget(Box):
         filename = list(file_dict.keys())[0]
         b_stream = BytesIO(file_dict[filename])
         data_array = np.loadtxt(b_stream, delimiter=',')
+
         self.data.append(data_array)
         
         # this is the first dataset loaded
@@ -230,7 +231,7 @@ class ASKLBWidget(Box):
             self.train_idxs = indices[:split_idx]
             self.test_idxs = indices[split_idx:]            
 
-        self.upload_widget.disabled = True
+
         self.fit_button_widget.disabled = False
 
     def on_fit_button_clicked(self, button):
@@ -277,9 +278,15 @@ class ASKLBWidget(Box):
         Returns:
             automl (AutoSklearnClassifier): fitted auto-sklearn model.
         """
-
-        automl = autosklearn.classification.AutoSklearnClassifier(
-            time_left_for_this_task = run_time)
+        automl_args = {}
+        
+        automl_args['time_left_for_this_task'] = run_time 
+        
+        if self.debug:
+            # TODO functionality to load this from Mongo
+            automl_args['metadata_directory']  = "metalearning_files/"
+        
+        automl = autosklearn.classification.AutoSklearnClassifier(**automl_args)
         thread = threading.Thread(target=self.update_progress, 
                                   args=(self.progress_widget,))    
         thread.start()
@@ -320,7 +327,7 @@ class ASKLBWidget(Box):
             print("MODELS:")
             print(automl.get_models_with_weights())
 
-        self.upload_widget.disabled = False
+        self.upload_button_widget.disabled = False
         #self.fit_button_widget.disabled = False
 
         return automl
