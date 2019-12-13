@@ -8,6 +8,7 @@ import sys
 import time
 import threading
 import warnings
+import configparser
 
 # widget modules
 import ipywidgets as widgets
@@ -18,6 +19,10 @@ import autosklearn.classification
 import numpy as np
 import sklearn.metrics as metrics
 import sklearn.model_selection
+
+# Authentication and database modules
+import pymongo
+import bcrypt
 
 """Model fitting functions"""
 
@@ -55,9 +60,12 @@ class HiddenPrints:
 
 
 """Constants"""
-MAX_TIME = 60
-MAX_BUDGET = 10
-TRAIN_SIZE = 0.75
+config = configparser.ConfigParser()
+config.read("../config/widget_config.ini")
+MONGO_URI = config['DEFAULT']['mongo_uri'] #replace with remote db URI
+MAX_TIME = int(config['DEFAULT']['max_time'])
+MAX_BUDGET = int(config['DEFAULT']['max_budget'])
+TRAIN_SIZE = float(config['DEFAULT']['train_size'])
 
 class ASKLBWidget(Box):
     """
@@ -67,6 +75,10 @@ class ASKLBWidget(Box):
     def __init__(self, **kwargs):
         """Initializes ASKLBWidget by creating all widget components."""
 
+        # Set up authentication to the database
+        client = pymongo.MongoClient(MONGO_URI)
+        self.db = client.asklb_test
+
         self.queries = 0
         # We make the assumption that the first column are the labels.
         # TODO can add "checksum" for the y's for the data to be in the same order
@@ -75,6 +87,36 @@ class ASKLBWidget(Box):
         self.train_idxs = []
         self.test_idxs = []
 
+        # Widgets for user authentication
+        self.user_text_widget = widgets.Text(
+            placeholder='Username',
+            description='Username:'
+        )
+
+        self.password_text_widget = widgets.Text(
+            placeholder='Password',
+            description='Password:'
+        )
+
+        self.sign_in_widget = widgets.Button(
+            description="Sign In", 
+            layout = widgets.Layout(width='auto'),
+            button_style='primary',
+            disabled=False) # init with fit button disabled
+        self.sign_in_widget.on_click(self.on_sign_in_widget_click)
+
+        self.register_widget = widgets.Button(
+            description="Register", 
+            layout = widgets.Layout(width='auto'),
+            button_style='primary',
+            disabled=False) # init with fit button disabled
+        self.register_widget.on_click(self.on_register_widget_click)
+
+        self.auth_label_widget = widgets.Label(value="Please sign in or register")
+
+        self.is_signed_in = False #Boolean for being signed in
+
+        # Widgets for automl runtime
         self.runtime_widget = widgets.IntSlider(
             value=1,
             min=1,
@@ -99,7 +141,7 @@ class ASKLBWidget(Box):
 
         self.fit_button_widget = widgets.Button(
             description="Fit Data to AutoML Model", 
-            layout = widgets.Layout( width='auto'),
+            layout = widgets.Layout(width='auto'),
             button_style='primary',
             disabled=True) # init with fit button disabled
         self.fit_button_widget.on_click(self.on_fit_button_clicked)
@@ -122,22 +164,30 @@ class ASKLBWidget(Box):
         models_accordian.set_title(0, 'Performance Metrics')
         models_accordian.set_title(1, 'Models and Weights Data')
 
-        self.layout = widgets.Layout(
+        main_layout = widgets.Layout(
             display='flex',
             flex_flow='column',
             align_items='stretch',
             border='solid',
-            width='65%')
+            width='80%')
 
-        widget_items = [runtime_slider, 
-                        budget_slider, 
-                        self.upload_widget, 
-                        self.fit_button_widget, 
-                        self.progress_widget, 
-                        self.event_output_widget, 
-                        models_accordian]
+        auth_widget_items = [self.user_text_widget, self.password_text_widget, self.sign_in_widget, self.register_widget]
+        self.auth_widget = widgets.VBox([widgets.HBox(auth_widget_items), self.auth_label_widget])
 
-        super(Box, self).__init__(children=widget_items, layout=self.layout, **kwargs)
+        automl_widget_items = [runtime_slider, 
+                               budget_slider, 
+                               self.upload_widget, 
+                               self.fit_button_widget, 
+                               self.progress_widget, 
+                               self.event_output_widget, 
+                               models_accordian]
+
+        self.automl_widget = widgets.VBox(automl_widget_items)
+        self.automl_widget.layout.visibility = 'hidden'
+
+        widget_items = [self.auth_widget, self.automl_widget]
+
+        super(Box, self).__init__(children=widget_items, layout=main_layout, **kwargs)
 
 
     def on_data_upload_completion(self, change_dict):
@@ -182,6 +232,79 @@ class ASKLBWidget(Box):
         pass
         #with self.event_output_widget:
         #    print("FILE UPLOAD BEGUN.")
+
+    def on_sign_in_widget_click(self, button):
+        """Defines widget behavior after the user clicks on the sign-in button
+
+        Side effects:
+            - enables the AutoML widget
+            - TODO switches the sign-in widget with a signed-in widget
+
+        Args:
+            button (widgets.Button): the sign-in object clicked.
+        """        
+
+        if not self.is_signed_in:
+            users = self.db.users
+            username = self.user_text_widget.value
+            password = self.password_text_widget.value
+
+            login_user = users.find_one({'username' : username})
+
+            # Upon sign in, disable auth widgets and show automl widgets
+            if login_user:
+                if bcrypt.hashpw(password.encode('utf-8'), 
+                                login_user['password']) == login_user['password']:
+                    self.auth_label_widget.value = "Authentication successful!"
+                    self.is_signed_in = True
+                    self.automl_widget.layout.visibility = 'visible'
+                    self.sign_in_widget.description = "Sign out"
+                    self.user_text_widget.disabled = True
+                    self.password_text_widget.disabled = True
+                    self.register_widget.disabled = True
+                else:
+                    self.auth_label_widget.value = "Incorrect password!"   
+            else:
+                self.auth_label_widget.value = "No user found!"   
+        else:
+            # Upon sign out, enable auth widgets and hide automl widgets
+            self.auth_label_widget.value = "Signed out!"
+            self.is_signed_in = False
+            self.automl_widget.layout.visibility = 'hidden'
+            self.sign_in_widget.description = "Sign in"
+            self.user_text_widget.disabled = False
+            self.password_text_widget.disabled = False
+            self.register_widget.disabled = False
+
+
+    def on_register_widget_click(self, button):
+        """Defines widget behavior after the user clicks on the sign-in button
+
+        Side effects:
+            - enables the AutoML widget
+            - TODO switches the sign-in widget with a signed-in widget
+
+        Args:
+            button (widgets.Button): the sign-in object clicked.
+        """
+
+        users = self.db.users
+        username = self.user_text_widget.value
+        password = self.password_text_widget.value
+
+        if not username:
+            self.auth_label_widget.value = "Username is required."
+        elif not password:
+            self.auth_label_widget.value = "Password is required."
+        else:            
+            existing_user = users.find_one({'username' : username})        
+
+            if existing_user is None:
+                hashpass = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+                users.insert({'username' : username, 'password' : hashpass})
+                self.auth_label_widget.value = "Registered successfully!"
+            else:
+                self.auth_label_widget.value = "That username exists!"
 
 
     def on_fit_button_clicked(self, button):
