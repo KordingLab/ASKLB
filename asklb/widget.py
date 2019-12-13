@@ -2,13 +2,14 @@
 IPyWidget implementation of ASKLB.
 """
 # built-in modules
+import configparser
+import copy
 from io import BytesIO
 import os
 import sys
 import time
 import threading
 import warnings
-import configparser
 
 # widget modules
 import ipywidgets as widgets
@@ -41,7 +42,7 @@ def thresholdout(train_acc, test_acc, threshold=0.01, noise=0.03):
     threshold_hat = threshold + np.random.laplace(0, 2*noise)
     
     if np.abs(train_acc - test_acc) > (threshold_hat + np.random.laplace(0, 4*noise)):
-        return test_acc + np.random.laplace(0, noise)
+        return np.clip(test_acc + np.random.laplace(0, noise), 0, 1)
     else:
         return train_acc
 
@@ -83,6 +84,7 @@ class ASKLBWidget(Box):
         # We make the assumption that the first column are the labels.
         # TODO can add "checksum" for the y's for the data to be in the same order
         self.data = []
+        self.models = []
         # We make the assumption that the data are uploaded in the same order.
         self.train_idxs = []
         self.test_idxs = []
@@ -93,7 +95,7 @@ class ASKLBWidget(Box):
             description='Username:'
         )
 
-        self.password_text_widget = widgets.Text(
+        self.password_text_widget = widgets.Password(
             placeholder='Password',
             description='Password:'
         )
@@ -102,14 +104,14 @@ class ASKLBWidget(Box):
             description="Sign In", 
             layout = widgets.Layout(width='auto'),
             button_style='primary',
-            disabled=False) # init with fit button disabled
+            disabled=False) 
         self.sign_in_widget.on_click(self.on_sign_in_widget_click)
 
         self.register_widget = widgets.Button(
             description="Register", 
             layout = widgets.Layout(width='auto'),
             button_style='primary',
-            disabled=False) # init with fit button disabled
+            disabled=False) 
         self.register_widget.on_click(self.on_register_widget_click)
 
         self.auth_label_widget = widgets.Label(value="Please sign in or register")
@@ -159,10 +161,10 @@ class ASKLBWidget(Box):
         runtime_slider = widgets.HBox([widgets.Label('Run time (min):'), self.runtime_widget])
         budget_slider = widgets.HBox([widgets.Label('Query budget:'), self.budget_widget])
 
-        models_accordian = widgets.Accordion(children=[self.metrics_output_widget, 
+        self.models_accordian = widgets.Accordion(children=[self.metrics_output_widget, 
                                                        self.model_output_widget])
-        models_accordian.set_title(0, 'Performance Metrics')
-        models_accordian.set_title(1, 'Models and Weights Data')
+        self.models_accordian.set_title(0, 'Performance Metrics')
+        self.models_accordian.set_title(1, 'Models and Weights Data')
 
         main_layout = widgets.Layout(
             display='flex',
@@ -174,13 +176,17 @@ class ASKLBWidget(Box):
         auth_widget_items = [self.user_text_widget, self.password_text_widget, self.sign_in_widget, self.register_widget]
         self.auth_widget = widgets.VBox([widgets.HBox(auth_widget_items), self.auth_label_widget])
 
+        self.tab_nest = widgets.Tab()
+        self.tab_nest.children = [self.models_accordian]
+        self.tab_nest.set_title(0, "Model Run Info")
+
         automl_widget_items = [runtime_slider, 
                                budget_slider, 
                                self.upload_widget, 
                                self.fit_button_widget, 
                                self.progress_widget, 
                                self.event_output_widget, 
-                               models_accordian]
+                               self.tab_nest]
 
         self.automl_widget = widgets.VBox(automl_widget_items)
         self.automl_widget.layout.visibility = 'hidden'
@@ -263,9 +269,9 @@ class ASKLBWidget(Box):
                     self.password_text_widget.disabled = True
                     self.register_widget.disabled = True
                 else:
-                    self.auth_label_widget.value = "Incorrect password!"   
+                    self.auth_label_widget.value = "Incorrect password."   
             else:
-                self.auth_label_widget.value = "No user found!"   
+                self.auth_label_widget.value = "No user found. First time users must register."   
         else:
             # Upon sign out, enable auth widgets and hide automl widgets
             self.auth_label_widget.value = "Signed out!"
@@ -302,7 +308,7 @@ class ASKLBWidget(Box):
             if existing_user is None:
                 hashpass = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
                 users.insert({'username' : username, 'password' : hashpass})
-                self.auth_label_widget.value = "Registered successfully!"
+                self.auth_label_widget.value = "Registered successfully! You may now sign in."
             else:
                 self.auth_label_widget.value = "That username exists!"
 
@@ -352,8 +358,13 @@ class ASKLBWidget(Box):
             automl (AutoSklearnClassifier): fitted auto-sklearn model.
         """
 
-        automl = autosklearn.classification.AutoSklearnClassifier(
-            time_left_for_this_task = run_time)
+        automl_args = {}
+
+        automl_args['time_left_for_this_task'] = run_time
+        # TODO functionality to laod this from Mongo
+        automl_args['metadata_directory'] = "../metalearning/metalearning_files/"
+
+        automl = autosklearn.classification.AutoSklearnClassifier(**automl_args)
         thread = threading.Thread(target=self.update_progress, 
                                   args=(self.progress_widget,))    
         thread.start()
@@ -375,6 +386,9 @@ class ASKLBWidget(Box):
             with HiddenPrints():
                 automl.fit(X_train, y_train)
 
+        # Automl has finished fitting:
+        self.models.append(copy.deepcopy(automl))
+
         with self.event_output_widget:
             print("FITTING COMPLETED WITH FITTING TIME PARAMETER AS ", int(run_time/60), " MINUTES")
 
@@ -387,7 +401,7 @@ class ASKLBWidget(Box):
 
             thresholdout_score = thresholdout(train_accuracy_score, test_accuracy_score)
 
-            output_str = "train acc: {}, test acc: {}\n".format(train_accuracy_score, thresholdout_score)
+            output_str = "Run {}: train acc: {}, test acc: {}\n".format(self.queries, train_accuracy_score, thresholdout_score)
             print(output_str)
 
         with self.model_output_widget:
@@ -395,12 +409,93 @@ class ASKLBWidget(Box):
             print(automl.get_models_with_weights())
 
         self.upload_widget.disabled = False
-        #self.fit_button_widget.disabled = False
+
+        if self.queries == self.budget_widget.value: 
+            self.on_budget_completion()
 
         return automl
     
+
     def update_progress(self, progress):
         """Updates progress widget"""
         for i in range(int(progress.max/5)):
             time.sleep(5)
             progress.value = progress.value+5
+
+    
+    def on_budget_completion(self):
+        """Defines widget behavior when the query budget is exhausted.
+
+        Side Effects:
+        - creates "Final Model Selection" tab
+            - final model selection dropdown
+            - final model selection button
+            - final model results output
+        - disables upload_widget
+        - disables fit_button_widget
+        
+        """
+        self.upload_widget.disabled = True
+        self.fit_button_widget.disabled = True
+
+        with self.event_output_widget:
+            print("QUERY LIMIT MET.")
+            print("SELECT FINAL MODEL.")
+    
+        self.final_model_dropdown = widgets.Dropdown(
+            options = [("Model {}".format(i), i) for i in range(1, self.queries+1)],
+            disabled=False
+        )
+
+        self.final_model_button = widgets.Button(
+            description="Confirm Final Model Choice", 
+            layout = widgets.Layout(width='auto'),
+            button_style='primary',
+            disabled=False) 
+        self.final_model_button.on_click(self.on_final_model_button_clicked)
+
+        self.final_output_widget = widgets.Output(layout={'border': '1px solid black'})
+
+        final_model_tab = widgets.VBox([self.final_model_dropdown, 
+                                        self.final_model_button,
+                                        self.final_output_widget])
+
+        # TODO some way of appending to current tab children? Re-setting children here is ugly
+        self.tab_nest.children = [self.models_accordian, final_model_tab]
+        self.tab_nest.set_title(0, "Model Run Info")
+        self.tab_nest.set_title(1, "Select Final Model")
+
+
+    def on_final_model_button_clicked(self, button):
+        """Displays final model information when a model is selected.
+
+        Side Effects:
+            - disables final_model_button
+            - disables final_model_dropdown
+
+        """
+        self.final_model_button.disabled = True
+        self.final_model_dropdown.disabled = True
+
+        with self.final_output_widget:
+            print("Chosen model true test performance:")
+            # for off by 1 query indexing
+            model_idx = self.final_model_dropdown.value - 1
+            sel_model = self.models[model_idx]
+            sel_data = self.data[model_idx]
+
+            y = sel_data[:, 0]
+            X = sel_data[:, 1:]
+
+            X_train = X[self.train_idxs]
+            y_train = y[self.train_idxs]
+
+            X_test = X[self.test_idxs]
+            y_test = y[self.test_idxs]
+
+            y_test_hat = sel_model.predict(X_test)
+            y_test_prob = sel_model.predict_proba(X_test)[:,1]
+            test_accuracy_score = metrics.accuracy_score(y_test, y_test_hat)
+            test_auc_score = metrics.roc_auc_score(y_test, y_test_prob)
+            output_str = "Accuracy: {}\nAUC: {}".format(test_accuracy_score, test_auc_score)
+            print(output_str)
