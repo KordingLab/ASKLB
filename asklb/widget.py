@@ -8,6 +8,7 @@ import sys
 import time
 import threading
 import warnings
+import configparser
 
 # widget modules
 import ipywidgets as widgets
@@ -59,9 +60,12 @@ class HiddenPrints:
 
 
 """Constants"""
-MAX_TIME = 60
-MAX_BUDGET = 10
-TRAIN_SIZE = 0.75
+config = configparser.ConfigParser()
+config.read("../config/widget_config.ini")
+MONGO_URI = config['DEFAULT']['mongo_uri'] #replace with remote db URI
+MAX_TIME = int(config['DEFAULT']['max_time'])
+MAX_BUDGET = int(config['DEFAULT']['max_budget'])
+TRAIN_SIZE = float(config['DEFAULT']['train_size'])
 
 class ASKLBWidget(Box):
     """
@@ -72,8 +76,7 @@ class ASKLBWidget(Box):
         """Initializes ASKLBWidget by creating all widget components."""
 
         # Set up authentication to the database
-        mongo_uri = "mongodb://127.0.0.1:27017/" #replace with remote db URI
-        client = pymongo.MongoClient(mongo_uri)
+        client = pymongo.MongoClient(MONGO_URI)
         self.db = client.asklb_test
 
         self.queries = 0
