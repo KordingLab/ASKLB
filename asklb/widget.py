@@ -401,7 +401,7 @@ class ASKLBWidget(Box):
 
             thresholdout_score = thresholdout(train_accuracy_score, test_accuracy_score)
 
-            output_str = "Run {}: train acc: {}, test acc: {}\n".format(self.queries, train_accuracy_score, thresholdout_score)
+            output_str = "Run {}: train acc: {:.4}, test acc: {:.4}\n".format(self.queries, train_accuracy_score, thresholdout_score)
             print(output_str)
 
         with self.model_output_widget:
@@ -497,5 +497,5 @@ class ASKLBWidget(Box):
             y_test_prob = sel_model.predict_proba(X_test)[:,1]
             test_accuracy_score = metrics.accuracy_score(y_test, y_test_hat)
             test_auc_score = metrics.roc_auc_score(y_test, y_test_prob)
-            output_str = "Accuracy: {}\nAUC: {}".format(test_accuracy_score, test_auc_score)
+            output_str = "Accuracy: {:.4}\nAUC: {:.4}".format(test_accuracy_score, test_auc_score)
             print(output_str)
