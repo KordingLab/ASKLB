@@ -73,8 +73,11 @@ class ASKLBWidget(Box):
     ASKLB Widget, extends ipywidget's Box.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, textbox_upload=True, **kwargs):
         """Initializes ASKLBWidget by creating all widget components."""
+
+        # TODO hack since FileUpload widgets do not work on any notebook hosting services (Azure, Colab)
+        self.textbox_upload = textbox_upload
 
         # Set up authentication to the database
         client = pymongo.MongoClient(MONGO_URI)
@@ -129,12 +132,26 @@ class ASKLBWidget(Box):
             min=1,
             max=MAX_BUDGET)
 
-        self.upload_widget = widgets.FileUpload(
-            accept='.csv',  # Accepted file extension
-            multiple=False  # Only accept a single file
-        )
-        self.upload_widget.observe(self.on_data_upload_begin, names="_counter")
-        self.upload_widget.observe(self.on_data_upload_completion, names="value")
+
+        if self.textbox_upload:
+            self.upload_text = widgets.Text(
+                placeholder="CSV filename here")
+            self.upload_button = widgets.Button(
+                description="Upload Data", 
+            layout = widgets.Layout(width='auto'),
+            button_style='primary',
+            disabled=False) 
+            self.upload_button.on_click(self.on_upload_button_clicked)
+
+            self.upload_widget = widgets.HBox([self.upload_text, self.upload_button])
+        
+        else:
+            self.upload_widget = widgets.FileUpload(
+                accept='.csv',  # Accepted file extension
+                multiple=False  # Only accept a single file
+            )
+            self.upload_widget.observe(self.on_data_upload_begin, names="_counter")
+            self.upload_widget.observe(self.on_data_upload_completion, names="value")
 
         self.progress_widget = widgets.IntProgress(
             value=0, 
@@ -196,6 +213,35 @@ class ASKLBWidget(Box):
         super(Box, self).__init__(children=widget_items, layout=main_layout, **kwargs)
 
 
+    def on_upload_button_clicked(self, button):
+        """Defines widget behavior after the upload button has been clicked.
+
+        Side effects:
+            - disables upload_button
+            - disables upload_text
+            - enables fit_button_widget
+            - appends new data to data list
+        """
+
+        data_array = np.loadtxt(open(self.upload_text.value, "rb"), delimiter=",")
+        self.data.append(data_array)
+
+        # this is the first dataset loaded
+        if len(self.data) == 1:
+            n_samples = self.data[0].shape[0]
+            indices = np.arange(n_samples)
+            np.random.shuffle(indices)
+            split_idx = int(n_samples * TRAIN_SIZE)
+            self.train_idxs = indices[:split_idx]
+            self.test_idxs = indices[split_idx:]  
+
+        with self.event_output_widget:
+            print("DATA PROCESSING COMPLETE.")
+
+        self.upload_button.disabled = True
+        self.upload_text.disabled = True
+        self.fit_button_widget.disabled = False
+
     def on_data_upload_completion(self, change_dict):
         """Defines widget behavior after a file has been uploaded.
 
@@ -215,6 +261,8 @@ class ASKLBWidget(Box):
             print("DATA UPLOAD COMPLETE.")
 
         self.upload_widget.disabled = True
+
+            
         self.fit_button_widget.disabled = False
         # https://github.com/jupyter-widgets/ipywidgets/issues/2538
         uploaded_filename = next(iter(self.upload_widget.value))
@@ -408,7 +456,11 @@ class ASKLBWidget(Box):
             print("MODELS:")
             print(automl.get_models_with_weights())
 
-        self.upload_widget.disabled = False
+        if self.textbox_upload:
+            self.upload_button.disabled = False
+            self.upload_text.disabled = False
+        else:
+            self.upload_widget.disabled = False
 
         if self.queries == self.budget_widget.value: 
             self.on_budget_completion()
@@ -435,7 +487,12 @@ class ASKLBWidget(Box):
         - disables fit_button_widget
         
         """
-        self.upload_widget.disabled = True
+        if self.textbox_upload:
+            self.upload_button.disabled = False
+            self.upload_text.disabled = False
+        else:
+            self.upload_widget.disabled = True
+
         self.fit_button_widget.disabled = True
 
         with self.event_output_widget:
