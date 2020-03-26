@@ -132,10 +132,11 @@ class ASKLBWidget(Box):
             min=1,
             max=MAX_BUDGET)
 
-
         if self.textbox_upload:
             self.upload_text = widgets.Text(
                 placeholder="CSV filename here")
+            self.test_size_text = widgets.Text(
+                placeholder="Input test set size here")
             self.upload_button = widgets.Button(
                 description="Upload Data", 
             layout = widgets.Layout(width='auto'),
@@ -143,7 +144,7 @@ class ASKLBWidget(Box):
             disabled=False) 
             self.upload_button.on_click(self.on_upload_button_clicked)
 
-            self.upload_widget = widgets.HBox([self.upload_text, self.upload_button])
+            self.upload_widget = widgets.HBox([self.upload_text, self.test_size_text, self.upload_button])
         
         else:
             self.upload_widget = widgets.FileUpload(
@@ -219,6 +220,7 @@ class ASKLBWidget(Box):
         Side effects:
             - disables upload_button
             - disables upload_text
+            - disables test_size_text on the first dataset uploaded
             - enables fit_button_widget
             - appends new data to data list
         """
@@ -230,10 +232,19 @@ class ASKLBWidget(Box):
         if len(self.data) == 1:
             n_samples = self.data[0].shape[0]
             indices = np.arange(n_samples)
-            np.random.shuffle(indices)
-            split_idx = int(n_samples * TRAIN_SIZE)
+
+            test_size = int(self.test_size_text.value)
+            split_idx = -1 * test_size
+
             self.train_idxs = indices[:split_idx]
             self.test_idxs = indices[split_idx:]  
+            self.test_size_text.disabled = True
+            print(self.train_idxs.shape)
+            print(self.test_idxs.shape)
+
+            print(self.train_idxs)
+            print(self.test_idxs)
+
 
         with self.event_output_widget:
             print("DATA PROCESSING COMPLETE.")
@@ -449,7 +460,7 @@ class ASKLBWidget(Box):
 
             thresholdout_score = thresholdout(train_accuracy_score, test_accuracy_score)
 
-            output_str = "Run {}: train acc: {:.4}, test acc: {:.4}\n".format(self.queries, train_accuracy_score, thresholdout_score)
+            output_str = "Run {}: train acc: {:.4}, noised test acc: {:.4}\n".format(self.queries, train_accuracy_score, thresholdout_score)
             print(output_str)
 
         with self.model_output_widget:
