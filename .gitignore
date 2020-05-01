@@ -1,3 +1,4 @@
+
 *.pyc
 __pycache__/
 
@@ -13,10 +14,12 @@ build/
 
 *~
 
-MetaData/
-
+MetaData/*
 Datasets/
 .vscode/
 
 notebooks/.ipynb_checkpoints/*
+asklb/.ipynb_checkpoints/*
 .ipynb_checkpoints/*
+
+asklb/widget_sandbox.ipynb

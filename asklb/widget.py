@@ -234,17 +234,12 @@ class ASKLBWidget(Box):
             indices = np.arange(n_samples)
 
             test_size = int(self.test_size_text.value)
+            assert test_size < n_samples, "The specified test size is greater than the sample size!"
             split_idx = -1 * test_size
 
             self.train_idxs = indices[:split_idx]
             self.test_idxs = indices[split_idx:]  
             self.test_size_text.disabled = True
-            print(self.train_idxs.shape)
-            print(self.test_idxs.shape)
-
-            print(self.train_idxs)
-            print(self.test_idxs)
-
 
         with self.event_output_widget:
             print("DATA PROCESSING COMPLETE.")
