@@ -4,7 +4,7 @@ init file for running the flask app.
 @author: hanfeishen, tonyliu, jessecui
 """
 
-from flask import (Flask, flash, request, redirect, url_for, 
+""" from flask import (Flask, flash, request, redirect, url_for, 
                    send_from_directory, render_template, session, g)
 import pymongo
 
@@ -20,7 +20,7 @@ db = client.asklb_test
 import asklb.auth
 import asklb.home
 import asklb.upload
-
+ """
 
 
 

@@ -16,8 +16,9 @@ import ipywidgets as widgets
 from ipywidgets import Box
 
 # ML modules
-import autosklearn.classification
+from autosklearn.classification import AutoSklearnClassifier
 import numpy as np
+import pandas as pd
 import sklearn.metrics as metrics
 import sklearn.model_selection
 
@@ -25,27 +26,10 @@ import sklearn.model_selection
 import pymongo
 import bcrypt
 
+# asklb modules
+import model_utils
+
 """Model fitting functions"""
-
-def thresholdout(train_acc, test_acc, threshold=0.01, noise=0.03):
-    """
-    Applies the thresholdout algorithm to produce a (possibly) noised output.
-    
-    An implementation of the algorithm presented in Section 3 of "Holdout Reuse."
-    
-    Args:
-        train_acc (float)
-        test_acc (float)
-        threshold (float): the base difference between train and test accuracies for thresholdout to apply
-        noise (float): the noise rate for the Laplacian noise applied
-    """
-    threshold_hat = threshold + np.random.laplace(0, 2*noise)
-    
-    if np.abs(train_acc - test_acc) > (threshold_hat + np.random.laplace(0, 4*noise)):
-        return np.clip(test_acc + np.random.laplace(0, noise), 0, 1)
-    else:
-        return train_acc
-
 
 class HiddenPrints:
     """
@@ -225,7 +209,9 @@ class ASKLBWidget(Box):
             - appends new data to data list
         """
 
-        data_array = np.loadtxt(open(self.upload_text.value, "rb"), delimiter=",")
+        #data_array = np.loadtxt(open(self.upload_text.value, "rb"), delimiter=",")
+        # we assume that the data are uploaded without a header
+        data_array = pd.read_csv(self.upload_text.value, header=None)
         self.data.append(data_array)
 
         # this is the first dataset loaded
@@ -247,6 +233,7 @@ class ASKLBWidget(Box):
         self.upload_button.disabled = True
         self.upload_text.disabled = True
         self.fit_button_widget.disabled = False
+
 
     def on_data_upload_completion(self, change_dict):
         """Defines widget behavior after a file has been uploaded.
@@ -292,6 +279,7 @@ class ASKLBWidget(Box):
         pass
         #with self.event_output_widget:
         #    print("FILE UPLOAD BEGUN.")
+
 
     def on_sign_in_widget_click(self, button):
         """Defines widget behavior after the user clicks on the sign-in button
@@ -415,30 +403,30 @@ class ASKLBWidget(Box):
         automl_args = {}
 
         automl_args['time_left_for_this_task'] = run_time
-        # TODO functionality to laod this from Mongo
+        # TODO functionality to load this from Mongo
         automl_args['metadata_directory'] = "../metalearning/metalearning_files/"
 
-        automl = autosklearn.classification.AutoSklearnClassifier(**automl_args)
+        automl = AutoSklearnClassifier(**automl_args)
         thread = threading.Thread(target=self.update_progress, 
                                   args=(self.progress_widget,))    
         thread.start()
 
-        # always load the latest dataset
-        cur_data = self.data[-1]
+        # always load a copy of the latest dataset
+        cur_data = self.data[-1].copy()
         
-        y = cur_data[:, 0]
-        X = cur_data[:, 1:]
+        y = cur_data.pop(0)
+        X, feat_types, _ = model_utils.process_feat_types(cur_data)
 
-        X_train = X[self.train_idxs]
-        y_train = y[self.train_idxs]
+        X_train = X.iloc[self.train_idxs]
+        y_train = y.iloc[self.train_idxs]
 
-        X_test = X[self.test_idxs]
-        y_test = y[self.test_idxs]
+        X_test = X.iloc[self.test_idxs]
+        y_test = y.iloc[self.test_idxs]
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             with HiddenPrints():
-                automl.fit(X_train, y_train)
+                automl.fit(X_train, y_train, feat_type=feat_types)
 
         # Automl has finished fitting:
         self.models.append(copy.deepcopy(automl))
@@ -453,7 +441,7 @@ class ASKLBWidget(Box):
             y_test_hat = automl.predict(X_test)
             test_accuracy_score = metrics.accuracy_score(y_test, y_test_hat)
 
-            thresholdout_score = thresholdout(train_accuracy_score, test_accuracy_score)
+            thresholdout_score = model_utils.thresholdout(train_accuracy_score, test_accuracy_score)
 
             output_str = "Run {}: train acc: {:.4}, noised test acc: {:.4}\n".format(self.queries, train_accuracy_score, thresholdout_score)
             print(output_str)
@@ -545,16 +533,14 @@ class ASKLBWidget(Box):
             # for off by 1 query indexing
             model_idx = self.final_model_dropdown.value - 1
             sel_model = self.models[model_idx]
-            sel_data = self.data[model_idx]
+            sel_data = self.data[model_idx].copy()
 
-            y = sel_data[:, 0]
-            X = sel_data[:, 1:]
+            # TODO move to model_utils function
+            y = sel_data.pop(0)
+            X, _, _ = model_utils.process_feat_types(sel_data)
 
-            X_train = X[self.train_idxs]
-            y_train = y[self.train_idxs]
-
-            X_test = X[self.test_idxs]
-            y_test = y[self.test_idxs]
+            X_test = X.iloc[self.test_idxs]
+            y_test = y.iloc[self.test_idxs]
 
             y_test_hat = sel_model.predict(X_test)
             y_test_prob = sel_model.predict_proba(X_test)[:,1]
