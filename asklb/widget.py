@@ -48,6 +48,8 @@ class HiddenPrints:
 
 """Constants"""
 config = configparser.ConfigParser()
+# Azure configuration
+#config.read(".widget_config.ini")
 config.read("../config/widget_config.ini")
 MONGO_URI = config['DEFAULT']['mongo_uri'] #replace with remote db URI
 MAX_TIME = int(config['DEFAULT']['max_time'])
@@ -411,6 +413,7 @@ class ASKLBWidget(Box):
 
         automl_args['time_left_for_this_task'] = run_time
         # TODO functionality to load this from Mongo
+        #automl_args['metadata_directory'] = "./metalearning/metalearning_files/"
         automl_args['metadata_directory'] = "../metalearning/metalearning_files/"
 
         automl = AutoSklearnClassifier(**automl_args)
