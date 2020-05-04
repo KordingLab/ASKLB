@@ -3,7 +3,8 @@ IPyWidget implementation of ASKLB.
 """
 # built-in modules
 import configparser
-import copy
+import copy 
+import datetime
 from io import BytesIO
 import os
 import sys
@@ -23,6 +24,7 @@ import sklearn.metrics as metrics
 import sklearn.model_selection
 
 # Authentication and database modules
+import gridfs
 import pymongo
 import bcrypt
 
@@ -66,11 +68,13 @@ class ASKLBWidget(Box):
         # Set up authentication to the database
         client = pymongo.MongoClient(MONGO_URI)
         self.db = client.asklb_test
+        self.username = None
 
         self.queries = 0
         # We make the assumption that the first column are the labels.
         # TODO can add "checksum" for the y's for the data to be in the same order
         self.data = []
+        self.filenames = []
         self.models = []
         # We make the assumption that the data are uploaded in the same order.
         self.train_idxs = []
@@ -213,6 +217,7 @@ class ASKLBWidget(Box):
         # we assume that the data are uploaded without a header
         data_array = pd.read_csv(self.upload_text.value, header=None)
         self.data.append(data_array)
+        self.filenames.append(self.upload_text.value)
 
         # this is the first dataset loaded
         if len(self.data) == 1:
@@ -271,7 +276,8 @@ class ASKLBWidget(Box):
             np.random.shuffle(indices)
             split_idx = int(n_samples * TRAIN_SIZE)
             self.train_idxs = indices[:split_idx]
-            self.test_idxs = indices[split_idx:]            
+            self.test_idxs = indices[split_idx:]   
+
 
     def on_data_upload_begin(self, counter):
         """Defines widget behavior once a file has begun uploading."""
@@ -310,6 +316,7 @@ class ASKLBWidget(Box):
                     self.user_text_widget.disabled = True
                     self.password_text_widget.disabled = True
                     self.register_widget.disabled = True
+                    self.username = username
                 else:
                     self.auth_label_widget.value = "Incorrect password."   
             else:
@@ -533,6 +540,7 @@ class ASKLBWidget(Box):
             # for off by 1 query indexing
             model_idx = self.final_model_dropdown.value - 1
             sel_model = self.models[model_idx]
+            sel_filename = self.filenames[model_idx]
             sel_data = self.data[model_idx].copy()
 
             # TODO move to model_utils function
@@ -548,3 +556,24 @@ class ASKLBWidget(Box):
             test_auc_score = metrics.roc_auc_score(y_test, y_test_prob)
             output_str = "Accuracy: {:.4}\nAUC: {:.4}".format(test_accuracy_score, test_auc_score)
             print(output_str)
+
+            # write chosen dataset to mongo
+            fs = gridfs.GridFS(self.db)
+            dataset_id = fs.put(open(sel_filename, "rb"))
+            #print(dataset_id)
+
+            dataset_info = {
+                "user": self.username,
+                "date": datetime.datetime.utcnow(),
+                "max_budget": self.queries,
+                "train_idx":  self.train_idxs.tolist(),
+                "test_idx": self.test_idxs.tolist(),
+                "sample_size": X.shape[0],
+                "test_auc": test_auc_score,
+                "test_acc": test_accuracy_score,
+                "filename": sel_filename,
+                "gridfs_id": dataset_id
+            }
+            
+            doc_id = self.db.datasets.insert_one(dataset_info).inserted_id
+            #print(doc_id)
