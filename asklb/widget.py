@@ -3,7 +3,7 @@ IPyWidget implementation of ASKLB.
 """
 # built-in modules
 import configparser
-import copy 
+import copy
 import datetime
 from io import BytesIO
 import os
@@ -27,6 +27,7 @@ import sklearn.model_selection
 import gridfs
 import pymongo
 import bcrypt
+import base64
 
 # asklb modules
 import model_utils
@@ -48,10 +49,11 @@ class HiddenPrints:
 
 """Constants"""
 config = configparser.ConfigParser()
-# Azure configuration
-#config.read(".widget_config.ini")
-config.read("../config/widget_config.ini")
-MONGO_URI = config['DEFAULT']['mongo_uri'] #replace with remote db URI
+# Colab configuration
+config.read(".widget_config.ini")
+#config.read("config/widget_config.ini")
+MONGO_PWD = base64.decodebytes(config['DEFAULT']['mongo_pwd'].encode("UTF-8")).decode().strip()
+MONGO_URI = config['DEFAULT']['mongo_uri'].format(MONGO_PWD) #replace with remote db URI
 MAX_TIME = int(config['DEFAULT']['max_time'])
 MAX_BUDGET = int(config['DEFAULT']['max_budget'])
 TRAIN_SIZE = float(config['DEFAULT']['train_size'])
@@ -94,17 +96,17 @@ class ASKLBWidget(Box):
         )
 
         self.sign_in_widget = widgets.Button(
-            description="Sign In", 
+            description="Sign In",
             layout = widgets.Layout(width='auto'),
             button_style='primary',
-            disabled=False) 
+            disabled=False)
         self.sign_in_widget.on_click(self.on_sign_in_widget_click)
 
         self.register_widget = widgets.Button(
-            description="Register", 
+            description="Register",
             layout = widgets.Layout(width='auto'),
             button_style='primary',
-            disabled=False) 
+            disabled=False)
         self.register_widget.on_click(self.on_register_widget_click)
 
         self.auth_label_widget = widgets.Label(value="Please sign in or register")
@@ -116,7 +118,7 @@ class ASKLBWidget(Box):
             value=1,
             min=1,
             max=MAX_TIME)
-        
+
         self.budget_widget = widgets.IntSlider(
             value=int(MAX_BUDGET/2),
             min=1,
@@ -128,14 +130,14 @@ class ASKLBWidget(Box):
             self.test_size_text = widgets.Text(
                 placeholder="Input test set size here")
             self.upload_button = widgets.Button(
-                description="Upload Data", 
+                description="Upload Data",
             layout = widgets.Layout(width='auto'),
             button_style='primary',
-            disabled=False) 
+            disabled=False)
             self.upload_button.on_click(self.on_upload_button_clicked)
 
             self.upload_widget = widgets.HBox([self.upload_text, self.test_size_text, self.upload_button])
-        
+
         else:
             self.upload_widget = widgets.FileUpload(
                 accept='.csv',  # Accepted file extension
@@ -145,12 +147,12 @@ class ASKLBWidget(Box):
             self.upload_widget.observe(self.on_data_upload_completion, names="value")
 
         self.progress_widget = widgets.IntProgress(
-            value=0, 
-            min=0, 
+            value=0,
+            min=0,
             description="Progress")
 
         self.fit_button_widget = widgets.Button(
-            description="Fit Data to AutoML Model", 
+            description="Fit Data to AutoML Model",
             layout = widgets.Layout(width='auto'),
             button_style='primary',
             disabled=True) # init with fit button disabled
@@ -165,11 +167,11 @@ class ASKLBWidget(Box):
 
     def assemble_widget(self, **kwargs):
         """Assembles the individual widget components in a single Box instance."""
-        
+
         runtime_slider = widgets.HBox([widgets.Label('Run time (min):'), self.runtime_widget])
         budget_slider = widgets.HBox([widgets.Label('Query budget:'), self.budget_widget])
 
-        self.models_accordian = widgets.Accordion(children=[self.metrics_output_widget, 
+        self.models_accordian = widgets.Accordion(children=[self.metrics_output_widget,
                                                        self.model_output_widget])
         self.models_accordian.set_title(0, 'Performance Metrics')
         self.models_accordian.set_title(1, 'Models and Weights Data')
@@ -188,12 +190,12 @@ class ASKLBWidget(Box):
         self.tab_nest.children = [self.models_accordian]
         self.tab_nest.set_title(0, "Model Run Info")
 
-        automl_widget_items = [runtime_slider, 
-                               budget_slider, 
-                               self.upload_widget, 
-                               self.fit_button_widget, 
-                               self.progress_widget, 
-                               self.event_output_widget, 
+        automl_widget_items = [runtime_slider,
+                               budget_slider,
+                               self.upload_widget,
+                               self.fit_button_widget,
+                               self.progress_widget,
+                               self.event_output_widget,
                                self.tab_nest]
 
         self.automl_widget = widgets.VBox(automl_widget_items)
@@ -231,7 +233,7 @@ class ASKLBWidget(Box):
             split_idx = -1 * test_size
 
             self.train_idxs = indices[:split_idx]
-            self.test_idxs = indices[split_idx:]  
+            self.test_idxs = indices[split_idx:]
             self.test_size_text.disabled = True
 
         with self.event_output_widget:
@@ -262,7 +264,7 @@ class ASKLBWidget(Box):
 
         self.upload_widget.disabled = True
 
-            
+
         self.fit_button_widget.disabled = False
         # https://github.com/jupyter-widgets/ipywidgets/issues/2538
         uploaded_filename = next(iter(self.upload_widget.value))
@@ -278,7 +280,7 @@ class ASKLBWidget(Box):
             np.random.shuffle(indices)
             split_idx = int(n_samples * TRAIN_SIZE)
             self.train_idxs = indices[:split_idx]
-            self.test_idxs = indices[split_idx:]   
+            self.test_idxs = indices[split_idx:]
 
 
     def on_data_upload_begin(self, counter):
@@ -298,7 +300,7 @@ class ASKLBWidget(Box):
 
         Args:
             button (widgets.Button): the sign-in object clicked.
-        """        
+        """
 
         if not self.is_signed_in:
             users = self.db.users
@@ -309,7 +311,7 @@ class ASKLBWidget(Box):
 
             # Upon sign in, disable auth widgets and show automl widgets
             if login_user:
-                if bcrypt.hashpw(password.encode('utf-8'), 
+                if bcrypt.hashpw(password.encode('utf-8'),
                                 login_user['password']) == login_user['password']:
                     self.auth_label_widget.value = "Authentication successful!"
                     self.is_signed_in = True
@@ -320,9 +322,9 @@ class ASKLBWidget(Box):
                     self.register_widget.disabled = True
                     self.username = username
                 else:
-                    self.auth_label_widget.value = "Incorrect password."   
+                    self.auth_label_widget.value = "Incorrect password."
             else:
-                self.auth_label_widget.value = "No user found. First time users must register."   
+                self.auth_label_widget.value = "No user found. First time users must register."
         else:
             # Upon sign out, enable auth widgets and hide automl widgets
             self.auth_label_widget.value = "Signed out!"
@@ -353,8 +355,8 @@ class ASKLBWidget(Box):
             self.auth_label_widget.value = "Username is required."
         elif not password:
             self.auth_label_widget.value = "Password is required."
-        else:            
-            existing_user = users.find_one({'username' : username})        
+        else:
+            existing_user = users.find_one({'username' : username})
 
             if existing_user is None:
                 hashpass = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
@@ -366,22 +368,22 @@ class ASKLBWidget(Box):
 
     def on_fit_button_clicked(self, button):
         """Widget behavior after fit button click event occurs.
-        
+
         Side effects:
             - disables budget_widget
             - disables fit_button_widget
 
-        Args: 
+        Args:
             button (widgets.Button): the button object clicked.
         """
-        
+
         self.budget_widget.disabled = True
         self.fit_button_widget.disabled = True
         # TODO figure out model display management
         self.model_output_widget.clear_output()
 
         final_runtime_value_seconds = self.runtime_widget.value * 60
-        self.progress_widget.value = 0    
+        self.progress_widget.value = 0
         self.progress_widget.max = final_runtime_value_seconds
 
         if self.queries == self.budget_widget.value:
@@ -391,7 +393,7 @@ class ASKLBWidget(Box):
             self.queries += 1
 
             with self.event_output_widget:
-                print("AUTOML RUN {} STARTED, FITTING TIME IS ".format(self.queries), 
+                print("AUTOML RUN {} STARTED, FITTING TIME IS ".format(self.queries),
                       int(final_runtime_value_seconds/60), " MINUTES")
 
             self.fit_automl(final_runtime_value_seconds)
@@ -399,7 +401,7 @@ class ASKLBWidget(Box):
 
     def fit_automl(self, run_time):
         """Runs auto-sklearn on the uploaded data and prints results.
-        
+
         Side effects:
             - Enables upload_widget
 
@@ -413,17 +415,17 @@ class ASKLBWidget(Box):
 
         automl_args['time_left_for_this_task'] = run_time
         # TODO functionality to load this from Mongo
-        #automl_args['metadata_directory'] = "./metalearning/metalearning_files/"
-        automl_args['metadata_directory'] = "../metalearning/metalearning_files/"
+        automl_args['metadata_directory'] = "./metalearning/metalearning_files/"
+        #automl_args['metadata_directory'] = "../metalearning/metalearning_files/"
 
         automl = AutoSklearnClassifier(**automl_args)
-        thread = threading.Thread(target=self.update_progress, 
-                                  args=(self.progress_widget,))    
+        thread = threading.Thread(target=self.update_progress,
+                                  args=(self.progress_widget,))
         thread.start()
 
         # always load a copy of the latest dataset
         cur_data = self.data[-1].copy()
-        
+
         y = cur_data.pop(0)
         X, feat_types, _ = model_utils.process_feat_types(cur_data)
 
@@ -444,10 +446,10 @@ class ASKLBWidget(Box):
         with self.event_output_widget:
             print("FITTING COMPLETED WITH FITTING TIME PARAMETER AS ", int(run_time/60), " MINUTES")
 
-        with self.metrics_output_widget:           
+        with self.metrics_output_widget:
             y_train_hat = automl.predict(X_train)
             train_accuracy_score = metrics.accuracy_score(y_train, y_train_hat)
-            
+
             y_test_hat = automl.predict(X_test)
             test_accuracy_score = metrics.accuracy_score(y_test, y_test_hat)
 
@@ -466,11 +468,11 @@ class ASKLBWidget(Box):
         else:
             self.upload_widget.disabled = False
 
-        if self.queries == self.budget_widget.value: 
+        if self.queries == self.budget_widget.value:
             self.on_budget_completion()
 
         return automl
-    
+
 
     def update_progress(self, progress):
         """Updates progress widget"""
@@ -478,7 +480,7 @@ class ASKLBWidget(Box):
             time.sleep(5)
             progress.value = progress.value+5
 
-    
+
     def on_budget_completion(self):
         """Defines widget behavior when the query budget is exhausted.
 
@@ -489,7 +491,7 @@ class ASKLBWidget(Box):
             - final model results output
         - disables upload_widget
         - disables fit_button_widget
-        
+
         """
         if self.textbox_upload:
             self.upload_button.disabled = False
@@ -502,22 +504,22 @@ class ASKLBWidget(Box):
         with self.event_output_widget:
             print("QUERY LIMIT MET.")
             print("SELECT FINAL MODEL.")
-    
+
         self.final_model_dropdown = widgets.Dropdown(
             options = [("Model {}".format(i), i) for i in range(1, self.queries+1)],
             disabled=False
         )
 
         self.final_model_button = widgets.Button(
-            description="Confirm Final Model Choice", 
+            description="Confirm Final Model Choice",
             layout = widgets.Layout(width='auto'),
             button_style='primary',
-            disabled=False) 
+            disabled=False)
         self.final_model_button.on_click(self.on_final_model_button_clicked)
 
         self.final_output_widget = widgets.Output(layout={'border': '1px solid black'})
 
-        final_model_tab = widgets.VBox([self.final_model_dropdown, 
+        final_model_tab = widgets.VBox([self.final_model_dropdown,
                                         self.final_model_button,
                                         self.final_output_widget])
 
@@ -577,6 +579,6 @@ class ASKLBWidget(Box):
                 "filename": sel_filename,
                 "gridfs_id": dataset_id
             }
-            
+
             doc_id = self.db.datasets.insert_one(dataset_info).inserted_id
             #print(doc_id)
