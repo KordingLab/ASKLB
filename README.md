@@ -5,8 +5,6 @@
 Repository for the auto-sklearn service described in "Automated Machine Learning 
 to Analyze Liquid Biopsy Data" by Shen et al.
 
-## Development setup (Anaconda)
+## Usage
 
-1. Create conda environment: `conda create --name asklb --file requirements.txt`
-2. Activate conda environment: `source activate asklb`
-3. Start flask server in dev mode on specified port: `./dev_run.sh <port #>`
+To use the ASKLB service, navigate to this Colab: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/KordingLab/ASKLB/blob/master/notebooks/asklb_colab.ipynb)
