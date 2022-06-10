@@ -360,7 +360,7 @@ class ASKLBWidget(Box):
 
             if existing_user is None:
                 hashpass = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-                users.insert({'username' : username, 'password' : hashpass})
+                users.insert_one({'username' : username, 'password' : hashpass})
                 self.auth_label_widget.value = "Registered successfully! You may now sign in."
             else:
                 self.auth_label_widget.value = "That username exists!"
