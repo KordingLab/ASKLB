@@ -438,7 +438,7 @@ class ASKLBWidget(Box):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             with HiddenPrints():
-                automl.fit(X_train, y_train, feat_type=feat_types)
+                automl.fit(X_train, y_train)#feat_type=feat_types)
 
         # Automl has finished fitting:
         self.models.append(copy.deepcopy(automl))

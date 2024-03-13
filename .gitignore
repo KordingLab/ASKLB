@@ -23,3 +23,6 @@ asklb/.ipynb_checkpoints/*
 .ipynb_checkpoints/*
 
 asklb/widget_sandbox.ipynb
+*csv
+*db
+*ini
